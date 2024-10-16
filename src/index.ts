@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import adoptionRoutes from './routes/adoptionRoutes';
 import pokemonRoutes from './routes/pokemonRoutes';
 
 const app = express();
@@ -7,6 +8,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+
+app.use('/adoption', adoptionRoutes);
 app.use('/pokemons', pokemonRoutes);
 
 // Start the server
