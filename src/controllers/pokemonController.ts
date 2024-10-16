@@ -14,11 +14,10 @@ export const getAvailablePokemons = async (req: Request, res: Response) => {
     let html = '<html><body><h1>Available Pokémons for Adoption</h1>';
 
     const pokemons = snapshot.docs.map(doc => doc.data());
-    console.log(pokemons);
 
     for (const pokemon of pokemons) {
       
-      const response = await axios.get(`https://pokeapi.co/api/v2/pokemon/${pokemon.id}`);
+      const response = await axios.get(`https://pokeapi.co/api/v2/pokemon/${pokemon.idPokemon}`);
       const data = response.data;
 
       html += `
@@ -27,6 +26,7 @@ export const getAvailablePokemons = async (req: Request, res: Response) => {
           <img src="${data.sprites.front_default}" alt="${data.name}" />
           <p>Type: ${data.types.map((t: any) => t.type.name).join(', ')}</p>
           <p>Abilities: ${data.abilities.map((a: any) => a.ability.name).join(', ')}</p>
+          <p>Pokemon choice id: ${pokemon.id}</p>
         </div>
         <hr />
       `;
