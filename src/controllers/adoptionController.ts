@@ -3,26 +3,22 @@ import { db } from '../firebase';
 import { FieldValue } from 'firebase-admin/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { AdoptionRequest } from '../models/adoptionRequest';
+import { requestValidator } from './validatorController';
 
 // Submit Adoption Request
 export const submitAdoptionRequest = async (req: Request, res: Response) => {
   try {
+
+    const validationResult = await requestValidator(req);
+    if (validationResult.error) {
+      return res.status(validationResult.status).json({ message: validationResult.error });
+    }
+
     const { name, lastname, address, rut, description, idPokemonchoice} = req.body;
-
-    if (!name || !lastname || !address || !rut || !description  || !idPokemonchoice) {
-      return res.status(400).json({ message: 'All fields are required, follow the next format: ToDo'});
-    }
-
-    const adoptionId = uuidv4();
-    
-    const result = await findAvailablePokemon(idPokemonchoice);
-
-    if (result.error) {
-        return res.status(result.status).json({ message: result.error });
-    }
 
     const isAccepted = await acceptenceMethod(rut);
 
+    const adoptionId = uuidv4();
     const adoptionRequest = {
       adoptionId,
       name,
@@ -38,7 +34,11 @@ export const submitAdoptionRequest = async (req: Request, res: Response) => {
     await db.collection('adoptionRequests').doc(adoptionId).set(adoptionRequest);
 
     if (isAccepted) {
-      simulatePreparation(adoptionRequest);
+        await db.collection('pokemons').doc(adoptionRequest.idPokemonchoice).update({
+            isAdopted: true,
+            ownerRUT: adoptionRequest.rut
+        });
+        simulatePreparation(adoptionRequest);
     }
 
     res.status(201).json({
@@ -52,41 +52,13 @@ export const submitAdoptionRequest = async (req: Request, res: Response) => {
   }
 };
 
+//Acceptence business logic
 const acceptenceMethod = async (rut:string) => {
-    const goodTrainerQuery = await db.collection('goodTrainer').where('rut', '==', rut).get();
+    const goodTrainerQuery = await db.collection('goodTrainers').where('rut', '==', rut).get();
     if(!goodTrainerQuery.empty){
         return Math.random() < 0.95;
     } else{
         return Math.random() < 0.5;
-    }
-};
-
-//Find Availability of the pokemon
-const findAvailablePokemon = async (idPokemonchoice: string) => {
-    try {
-      const pokemonQuery = await db.collection('pokemons').where('id', '==', idPokemonchoice).get();
-  
-      if (pokemonQuery.empty) {
-        return { error: `Pokémon with ID ${idPokemonchoice} not found.`, status: 404 };
-      }
-  
-      let selectedPokemon: any = null;
-  
-      pokemonQuery.forEach((doc) => {
-        const pokemonData = doc.data();
-        if (pokemonData.isAdopted === false) {
-          selectedPokemon = { id: doc.id, ...pokemonData };
-        }
-      });
-  
-      if (!selectedPokemon) {
-        return { error: `Pokémon with ID ${idPokemonchoice} is either already adopted or unavailable.`, status: 400 };
-      }
-  
-      return { pokemon: selectedPokemon };
-    } catch (error) {
-      console.error('Error finding Pokémon:', error);
-      return { error: 'Internal Server Error', status: 500 };
     }
 };
 
@@ -97,9 +69,6 @@ const simulatePreparation = (adoptionRequest: AdoptionRequest) => {
         await db.collection('adoptionRequests').doc(adoptionRequest.adoptionId).update({
           status: 'On Route',
         });
-        await db.collection('pokemons').doc(adoptionRequest.idPokemonchoice).update({
-            isAdopted: true,
-          });
         simulateTransportation(adoptionRequest);
       } catch (error) {
         console.error('Error during preparation:', error);
@@ -130,6 +99,7 @@ const simulateTransportation = (adoptionRequest: AdoptionRequest) => {
           });
           await db.collection('pokemons').doc(adoptionRequest.idPokemonchoice).update({
             isAdopted: false,
+            ownerRUT: ""
           });
 
           await handleTransportationFailure(adoptionRequest.adoptionId);
@@ -143,7 +113,7 @@ const simulateTransportation = (adoptionRequest: AdoptionRequest) => {
 //Save success adoption trainer
 const saveTrainer = async (adoptionRequest: AdoptionRequest) => {
 
-    const goodTrainerQuery = await db.collection('goodTrainer').where('rut', '==', adoptionRequest.rut).get();
+    const goodTrainerQuery = await db.collection('goodTrainers').where('rut', '==', adoptionRequest.rut).get();
 
     if (goodTrainerQuery.empty) {
         const goodTrainerId = uuidv4();
@@ -156,11 +126,11 @@ const saveTrainer = async (adoptionRequest: AdoptionRequest) => {
             description: adoptionRequest.description,
             numberOfPokemonAdopted: 1
         };
-        await db.collection('goodTrainer').doc(goodTrainerId).set(goodTrainer);
+        await db.collection('goodTrainers').doc(goodTrainerId).set(goodTrainer);
 
     } else {
         const goodTrainerId = goodTrainerQuery.docs[0].id;
-        await db.collection('goodTrainer').doc(goodTrainerId).update({
+        await db.collection('goodTrainers').doc(goodTrainerId).update({
             numberOfPokemonAdopted: FieldValue.increment(1),
           });
     }
